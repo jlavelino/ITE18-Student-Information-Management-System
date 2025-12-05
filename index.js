@@ -8,15 +8,29 @@ const Groq = require("groq-sdk");
 require("dotenv").config();
 
 const app = express();
-const PORT = 3000;
-const DATA_FILE = "./students.json";
+const PORT = process.env.PORT || 3000;
 
+// CRITICAL FOR VERCEL: Use process.cwd() to find the file
+const DATA_FILE = path.join(process.cwd(), "students.json");
+
+// Initialize Groq
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/assets", express.static(path.join(__dirname, "assets")));
+
+// Helper function to safely read data
+function readData() {
+  try {
+    const data = fs.readFileSync(DATA_FILE, "utf8");
+    return JSON.parse(data);
+  } catch (error) {
+    console.error("Error reading file:", error);
+    return []; // Return empty array if file fails
+  }
+}
 
 // Homepage
 app.get("/", (req, res) => {
@@ -25,21 +39,20 @@ app.get("/", (req, res) => {
 
 // Get all students
 app.get("/students", (req, res) => {
-  fs.readFile(DATA_FILE, "utf8", (err, data) => {
-    if (err) return res.status(500).json({ message: "Error reading file" });
-    const students = JSON.parse(data);
-    res.json(students);
-  });
+  const students = readData();
+  res.json(students);
 });
 
-// chatbot route
+// Chatbot Route
 app.post("/chat", async (req, res) => {
   try {
     const { message } = req.body;
 
-    const data = fs.readFileSync(DATA_FILE, "utf8");
-    const students = JSON.parse(data);
-    const studentDataString = JSON.stringify(students);
+    // Read real data
+    const students = readData();
+
+    // Limit data size to prevent timeouts on Vercel
+    const studentDataString = JSON.stringify(students).slice(0, 15000);
 
     const systemPrompt = `
       You are a helpful data analyst for a Student Information System.
@@ -47,13 +60,11 @@ app.post("/chat", async (req, res) => {
       ${studentDataString}
       
       Instructions:
-      1. Answer the user's question based ONLY on this data.
-      2. If asked to count, count accurately.
-      3. Format lists clearly with line breaks (use <br> for new lines).
-      4. If asked "Who am I?", explain you only know the database, not the user.
+      1. Answer based ONLY on this data.
+      2. Format lists with <br> for new lines.
+      3. If I ask "Who created you?", say "I was created by Monica & Anilov."
     `;
 
-    //  Call Groq API
     const chatCompletion = await groq.chat.completions.create({
       messages: [
         { role: "system", content: systemPrompt },
@@ -68,8 +79,20 @@ app.post("/chat", async (req, res) => {
     res.json({ reply: botReply });
   } catch (error) {
     console.error("AI Error:", error);
-    res.status(500).json({ error: "Failed to process chat request." });
+    // Send a valid JSON error so frontend doesn't crash
+    res
+      .status(500)
+      .json({ reply: "❌ Error: My server is busy or the AI key is missing." });
   }
+});
+
+// NOTE: Add/Delete/Edit will NOT work nicely on Vercel with JSON files
+// because Vercel does not allow saving changes to the file.
+// We keep the route so the code doesn't break, but it won't persist changes.
+app.post("/students", (req, res) => {
+  res.json({
+    message: "Note: On Vercel demo, new students are not saved permanently.",
+  });
 });
 
 app.listen(PORT, () => {
