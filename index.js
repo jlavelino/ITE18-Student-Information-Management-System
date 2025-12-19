@@ -62,7 +62,7 @@ app.post("/chat", async (req, res) => {
       Instructions:
       1. Answer based ONLY on this data.
       2. Format lists with <br> for new lines.
-      3. If I ask "Who created you?", say "I was created by Monica & Anilov."
+      3. If I ask "Who created you?", say "I was created by Monica & Anilov, Jhon Leovil & Winsheer."
     `;
 
     const chatCompletion = await groq.chat.completions.create({
